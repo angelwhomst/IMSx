@@ -1,22 +1,42 @@
-# Use an official Python base image
 FROM python:3.11
 
-# Set the working directory
-WORKDIR /app
+# UPDATE APT-GET
+RUN apt-get update
 
-# Install system dependencies for ODBC Driver 17
-RUN apt-get update && apt-get install -y \
-    curl gnupg2 unixodbc unixodbc-dev && \
-    curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
-    curl https://packages.microsoft.com/config/debian/11/prod.list | tee /etc/apt/sources.list.d/mssql-release.list && \
-    apt-get update && ACCEPT_EULA=Y apt-get install -y msodbcsql17 && \
-    rm -rf /var/lib/apt/lists/*
+# PYODBC DEPENDENCES
+RUN apt-get install -y tdsodbc unixodbc-dev
+RUN apt install -y unixodbc
+RUN apt-get clean -y
+RUN echo '[FreeTDS] \n\
+Description=FreeTDS Driver  \n\
+Driver=/usr/lib/x86_64-linux-gnu/odbc/libtdsodbc.so  \n\
+Setup=/usr/lib/x86_64-linux-gnu/odbc/libtdsS.so ' > /etc/odbcinst.ini 
 
-# Copy project files
-COPY . .
+# UPGRADE pip3
+RUN pip3 install --upgrade pip
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# DEPENDECES FOR DOWNLOAD ODBC DRIVER
+RUN apt-get install apt-transport-https 
+RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
+RUN curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list
+RUN apt-get update
+
+# INSTALL ODBC DRIVER
+RUN ACCEPT_EULA=Y apt-get install msodbcsql17 --assume-yes
+
+# CONFIGURE ENV FOR /bin/bash TO USE MSODBCSQL17
+RUN echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bash_profile 
+RUN echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc 
+
+LABEL maintainer="angelolivarez810@gmail.com"
+
+RUN echo 'aioodbc \n\
+          pytest' > /tmp/requirements.txt
+
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+RUN sed -i.bak 's~MinProtocol = TLSv[^>]*~MinProtocol = TLSv1.0~' /etc/ssl/openssl.cnf
+RUN sed -i.bak 's~CipherString = DEFAULT@SECLEVEL=[^>]*~CipherString = DEFAULT@SECLEVEL=1~' /etc/ssl/openssl.cnf
 
 # Expose port 8000
 EXPOSE 8000
